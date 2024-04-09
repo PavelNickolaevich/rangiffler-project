@@ -1,55 +1,74 @@
 package com.rangiffler.controller;
 
-import com.rangiffler.model.UserJsonGQL;
-import com.rangiffler.service.cors.UserService;
+import com.rangiffler.model.country.Country;
+import com.rangiffler.model.user.UpdateUserInfoInput;
+import com.rangiffler.model.user.UserJsonGQL;
+import com.rangiffler.service.cors.api.RestUserDataClient;
 import graphql.schema.DataFetchingEnvironment;
-import graphql.schema.SelectedField;
 import jakarta.annotation.Nonnull;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
-import org.springframework.graphql.data.method.annotation.SchemaMapping;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Controller;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
 @Controller
-@RequiredArgsConstructor
 public class UserGraphQlController {
 
-    private final UserService userService;
+    private final RestUserDataClient userService;
 
     @Autowired
-    public UserGraphqlController(UserService userService) {
+    public UserGraphQlController(RestUserDataClient userService) {
         this.userService = userService;
     }
+//
+//    @SchemaMapping(typeName = "User", field = "friends")
+//    public List<UserJsonGQL> getFriends(UserJsonGQL user) {
+//        return getFriends(user.username());
+//    }
+//
+//    @SchemaMapping(typeName = "User", field = "invitations")
+//    public List<UserJsonGQL> getInvitations(UserJsonGQL user) {
+//        return getInvitations(user.username());
+//    }
 
-    @SchemaMapping(typeName = "User", field = "friends")
-    public List<UserJsonGQL> getFriends(UserJsonGQL user) {
-        return getFriends(user.username());
-    }
-
-    @SchemaMapping(typeName = "User", field = "invitations")
-    public List<UserJsonGQL> getInvitations(UserJsonGQL user) {
-        return getInvitations(user.username());
-    }
+//    @QueryMapping
+//    public UserJsonGQL user(@AuthenticationPrincipal Jwt principal,
+//                            @Nonnull DataFetchingEnvironment env) {
+//        checkSubQueries(env, 2, "friends", "invitations");
+//        String username = principal.getClaim("sub");
+//        UserJson userJson = userDataClient.currentUser(username);
+//        UserJsonGQL userJsonGQL = UserJsonGQL.fromUserJson(userJson);
+//        userJsonGQL.friends().addAll(getFriends(username));
+//        userJsonGQL.invitations().addAll(getInvitations(username));
+//        return userJsonGQL;
+//    }
 
     @QueryMapping
     public UserJsonGQL user(@AuthenticationPrincipal Jwt principal,
                             @Nonnull DataFetchingEnvironment env) {
-        checkSubQueries(env, 2, "friends", "invitations");
         String username = principal.getClaim("sub");
-        UserJson userJson = userDataClient.currentUser(username);
-        UserJsonGQL userJsonGQL = UserJsonGQL.fromUserJson(userJson);
-        userJsonGQL.friends().addAll(getFriends(username));
-        userJsonGQL.invitations().addAll(getInvitations(username));
-        return userJsonGQL;
+        return userService.currentUser(username);
+    }
+
+    @MutationMapping
+    public UserJsonGQL user(@AuthenticationPrincipal Jwt principal,
+                            @Argument @Valid UpdateUserInfoInput input) {
+        String username = principal.getClaim("sub");
+        return userService.updateUserInfo(new UserJsonGQL(
+                null,
+                username,
+                input.firstname(),
+                input.surname(),
+                input.avatar(),
+                new Country(input.location().code(), null, null),
+                null
+        ));
+
+
     }
 
 //    @QueryMapping

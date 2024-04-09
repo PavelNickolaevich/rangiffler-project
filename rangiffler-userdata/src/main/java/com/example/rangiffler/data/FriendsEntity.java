@@ -28,7 +28,7 @@ public class FriendsEntity {
     private UserEntity friend;
 
     @Column(name = "created_date", columnDefinition = "DATE", nullable = false)
-    private Date spendDate;
+    private Date createdDate;
 
     @Column(nullable = false, name = "status")
     @Enumerated(EnumType.STRING)

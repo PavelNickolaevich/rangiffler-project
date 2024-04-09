@@ -1,3 +1,4 @@
+
 type Photo {
     id: ID!
     src: String!

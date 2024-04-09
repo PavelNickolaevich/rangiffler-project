@@ -1,15 +1,17 @@
 package com.example.rangiffler.service;
 
+import com.example.rangiffler.data.FriendsEntity;
 import com.example.rangiffler.data.UserEntity;
+import com.example.rangiffler.data.repository.FriendsRepository;
 import com.example.rangiffler.data.repository.UserRepository;
+import com.example.rangiffler.exception.NotFoundException;
+import com.example.rangiffler.model.FriendJson;
+import com.example.rangiffler.model.FriendStatus;
 import com.example.rangiffler.model.UserJson;
 import jakarta.annotation.Nonnull;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,39 +23,58 @@ public class UserDataService {
 
     private static final Logger LOG = LoggerFactory.getLogger(UserDataService.class);
     private final UserRepository userRepository;
+    private final FriendsRepository friendsRepository;
+
 
     @Autowired
-    public UserDataService(UserRepository userRepository) {
+    public UserDataService(UserRepository userRepository, FriendsRepository friendsRepository) {
         this.userRepository = userRepository;
+        this.friendsRepository = friendsRepository;
     }
 
-    @Transactional
-    @KafkaListener(topics = "users", groupId = "userdata")
-    public void listener(@Payload UserJson user, ConsumerRecord<String, UserJson> cr) {
-        LOG.info("### Kafka topic [users] received message: " + user.username());
-        LOG.info("### Kafka consumer record: " + cr.toString());
-        UserEntity userDataEntity = new UserEntity();
-        userDataEntity.setUsername(user.username());
-        userDataEntity.setCurrency(DEFAULT_USER_CURRENCY);
-        UserEntity userEntity = userRepository.save(userDataEntity);
-        LOG.info(String.format(
-                "### User '%s' successfully saved to database with id: %s",
-                user.username(),
-                userEntity.getId()
-        ));
-    }
-
+    //    @Transactional
+//   @KafkaListener(topics = "users", groupId = "userdata")
+//    public void listener(@Payload UserJson user, ConsumerRecord<String, UserJson> cr) {
+//        LOG.info("### Kafka topic [users] received message: " + user.username());
+//        LOG.info("### Kafka consumer record: " + cr.toString());
+//        UserEntity userDataEntity = new UserEntity();
+//        userDataEntity.setUsername(user.username());
+//        userDataEntity.setCurrency(DEFAULT_USER_CURRENCY);
+//        UserEntity userEntity = userRepository.save(userDataEntity);
+//        LOG.info(String.format(
+//                "### User '%s' successfully saved to database with id: %s",
+//                user.username(),
+//                userEntity.getId()
+//        ));
+//    }
     @Transactional
     public @Nonnull
     UserJson update(@Nonnull UserJson user) {
-        UserEntity userEntity = getRequiredUser(user.username());
+        UserEntity userEntity = userRepository.findByUsername(user.username());
+        if (userEntity == null) {
+            throw new NotFoundException("Can`t find user by username: " + user.username());
+        }
         userEntity.setFirstname(user.firstname());
-        userEntity.setSurname(user.surname());
-        userEntity.setCurrency(user.currency());
-        userEntity.setPhoto(user.photo() != null ? user.photo().getBytes(StandardCharsets.UTF_8) : null);
+        userEntity.setLastName(user.surname());
+        userEntity.setAvatar(user.avatar() != null ? user.avatar().getBytes(StandardCharsets.UTF_8) : null);
         UserEntity saved = userRepository.save(userEntity);
+
         return UserJson.fromEntity(saved);
     }
+
+    @Transactional(readOnly = true)
+    public @Nonnull
+    UserJson getCurrentUserOrCreateIfAbsent(@Nonnull String username) {
+        UserEntity userEntity = userRepository.findByUsername(username);
+        if (userEntity == null) {
+            userEntity = new UserEntity();
+            userEntity.setUsername(username);
+            return UserJson.fromEntity(userRepository.save(userEntity));
+        } else {
+            return UserJson.fromEntity(userEntity);
+        }
+    }
+
 
     @Transactional(readOnly = true)
     public @Nonnull
@@ -80,15 +101,15 @@ public class UserDataService {
 
                 if (inviteToMe.isPresent()) {
                     FriendsEntity invite = inviteToMe.get();
-                    result.add(UserJson.fromEntity(user, invite.isPending()
-                            ? FriendState.INVITE_RECEIVED
-                            : FriendState.FRIEND));
+                    result.add(UserJson.fromEntity(user, invite.getCreatedDate() != null
+                            ? FriendStatus.INVITATION_RECEIVED
+                            : FriendStatus.FRIEND));
                 }
                 if (inviteFromMe.isPresent()) {
                     FriendsEntity invite = inviteFromMe.get();
-                    result.add(UserJson.fromEntity(user, invite.isPending()
-                            ? FriendState.INVITE_SENT
-                            : FriendState.FRIEND));
+                    result.add(UserJson.fromEntity(user,invite.getCreatedDate() != null
+                            ? FriendStatus.INVITATION_SENT
+                            : FriendStatus.FRIEND));
                 }
             } else {
                 result.add(UserJson.fromEntity(user));
@@ -97,18 +118,25 @@ public class UserDataService {
         return new ArrayList<>(result);
     }
 
-    @Transactional(readOnly = true)
-    public @Nonnull
-    List<UserJson> friends(@Nonnull String username, boolean includePending) {
-        return getRequiredUser(username)
-                .getFriends()
-                .stream()
-                .filter(fe -> includePending || !fe.isPending())
-                .map(fe -> UserJson.fromEntity(fe.getFriend(), fe.isPending()
-                        ? FriendState.INVITE_SENT
-                        : FriendState.FRIEND))
-                .toList();
+//    @Transactional(readOnly = true)
+//    public @Nonnull
+//    List<UserJson> friends(@Nonnull String username, boolean includePending) {
+//        return getRequiredUser(username)
+//                .getFriends()
+//                .stream()
+//                .filter(fe -> includePending || !fe.isPending())
+//                .map(fe -> UserJson.fromEntity(fe.getFriend(), fe.isPending()
+//                        ? FriendState.INVITE_SENT
+//                        : FriendState.FRIEND))
+//                .toList();
+//    }
+
+    public List<UserJson> friends(String username, boolean includePending) {
+        return userRepository.findByUsername(username)
+                .getFriends().stream().filter(fe -> fe.getStatus().equals(FriendStatus.FRIEND))
+                .map(fe -> UserJson.fromEntity(fe.getFriend())).toList();
     }
+
 
     @Transactional(readOnly = true)
     public @Nonnull
@@ -116,19 +144,19 @@ public class UserDataService {
         return getRequiredUser(username)
                 .getInvites()
                 .stream()
-                .filter(FriendsEntity::isPending)
-                .map(fe -> UserJson.fromEntity(fe.getUser(), FriendState.INVITE_RECEIVED))
+                .map(fe -> UserJson.fromEntity(fe.getUser(), FriendStatus.INVITATION_SENT))
                 .toList();
     }
+
 
     @Transactional
     public UserJson addFriend(@Nonnull String username, @Nonnull FriendJson friend) {
         UserEntity currentUser = getRequiredUser(username);
         UserEntity friendEntity = getRequiredUser(friend.username());
 
-        currentUser.addFriends(true, friendEntity);
+        currentUser.addFriends(FriendStatus.FRIEND, friendEntity);
         userRepository.save(currentUser);
-        return UserJson.fromEntity(friendEntity, FriendState.INVITE_SENT);
+        return UserJson.fromEntity(friendEntity, FriendStatus.INVITATION_SENT);
     }
 
     @Transactional
@@ -143,16 +171,16 @@ public class UserDataService {
                 .findFirst()
                 .orElseThrow();
 
-        invite.setPending(false);
-        currentUser.addFriends(false, inviteUser);
+      //  invite.setCreatedDate(new Date());
+        currentUser.addFriends(FriendStatus.FRIEND, inviteUser);
         userRepository.save(currentUser);
 
         return currentUser
                 .getFriends()
                 .stream()
-                .map(fe -> UserJson.fromEntity(fe.getFriend(), fe.isPending()
-                        ? FriendState.INVITE_SENT
-                        : FriendState.FRIEND))
+                .map(fe -> UserJson.fromEntity(fe.getFriend(), fe.getCreatedDate() != null
+                        ? FriendStatus.INVITATION_RECEIVED
+                        : FriendStatus.FRIEND))
                 .toList();
     }
 
@@ -170,8 +198,8 @@ public class UserDataService {
 
         return currentUser.getInvites()
                 .stream()
-                .filter(FriendsEntity::isPending)
-                .map(fe -> UserJson.fromEntity(fe.getUser(), FriendState.INVITE_RECEIVED))
+              //  .filter(FriendsEntity::isPending)
+                .map(fe -> UserJson.fromEntity(fe.getUser(), FriendStatus.INVITATION_RECEIVED)
                 .toList();
     }
 
@@ -192,9 +220,9 @@ public class UserDataService {
         return currentUser
                 .getFriends()
                 .stream()
-                .map(fe -> UserJson.fromEntity(fe.getFriend(), fe.isPending()
-                        ? FriendState.INVITE_SENT
-                        : FriendState.FRIEND))
+                .map(fe -> UserJson.fromEntity(fe.getFriend(), fe.getStatus().equals(FriendStatus.FRIEND)
+                        ? FriendStatus.INVITATION_RECEIVED
+                        : FriendStatus.INVITATION_SENT))
                 .toList();
     }
 

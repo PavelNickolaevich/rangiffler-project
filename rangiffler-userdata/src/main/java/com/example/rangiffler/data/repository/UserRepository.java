@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface UserRepository extends JpaRepository<UserEntity, UUID> {
 
     UserEntity findByUsername(String username);
+
+    List<UserEntity> findByUsernameNot(String username);
 }

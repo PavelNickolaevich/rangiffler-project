@@ -1,21 +1,19 @@
 package com.example.rangiffler.data;
 
+import com.example.rangiffler.model.FriendStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.proxy.HibernateProxy;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Stream;
 
 @Getter
 @Setter
 @Entity
-@Table(name = "user")
-@IdClass(CountryId.class)
+@Table(name = "\"user\"")
+//@IdClass(CountryId.class)
 public class UserEntity {
 
     @Id
@@ -23,19 +21,18 @@ public class UserEntity {
     @Column(name = "id", nullable = false, columnDefinition = "UUID default gen_random_uuid()")
     private UUID id;
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "username", nullable = false, unique = true)
     private String username;
 
-    @Column(nullable = true)
+    @Column(name = "firstname", nullable = true)
     private String firstname;
 
-    @Column(nullable = true)
-    private String lastname;
+    @Column(name = "surname", nullable = true)
+    private String lastName;
 
     @Column(name = "avatar", columnDefinition = "bytea")
-    private byte[] photo;
+    private byte[] avatar;
 
-    @Id
     @ManyToOne
     @JoinColumn(name = "country_id", referencedColumnName = "id")
     private CountryEntity country;
@@ -46,31 +43,62 @@ public class UserEntity {
     @OneToMany(mappedBy = "friend", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
     private List<FriendsEntity> invites = new ArrayList<>();
 
+    public void addFriends(FriendStatus status, UserEntity... friends) {
+        List<FriendsEntity> friendsEntities = Stream.of(friends)
+                .map(f -> {
+                    FriendsEntity fe = new FriendsEntity();
+                    fe.setUser(this);
+                    fe.setFriend(f);
+                    fe.setStatus(status);
+                    return fe;
+                }).toList();
+        this.friends.addAll(friendsEntities);
+    }
 
-//    public void addFriends(boolean pending, UserEntity... friends) {
-//        List<FriendsEntity> friendsEntities = Stream.of(friends)
-//                .map(f -> {
+    public void addInvitations(UserEntity... invitations) {
+        List<FriendsEntity> invitationsEntities = Stream.of(invitations)
+                .map(i -> {
+                    FriendsEntity fe = new FriendsEntity();
+                    fe.setUser(i);
+                    fe.setFriend(this);
+                    return fe;
+                }).toList();
+        this.invites.addAll(invitationsEntities);
+    }
+
+//    public void addInvitations(UserEntity... invitations) {
+//        List<FriendsEntity> invitationsEntities = Stream.of(invitations)
+//                .map(i -> {
 //                    FriendsEntity fe = new FriendsEntity();
-//                    fe.setUser(this);
-//                    fe.setFriend(f);
-//                    fe.setPending(pending);
+//                    fe.setUser(i);
+//                    fe.setFriend(this);
+//                    //     fe.setStatus(true);
 //                    return fe;
 //                }).toList();
-//
-//        this.friends.addAll(friendsEntities);
+//        this.invites.addAll(invitationsEntities);
 //    }
-//
-//    public void removeFriends(UserEntity... friends) {
-//        for (UserEntity friend : friends) {
-//            getFriends().removeIf(f -> f.getFriend().getId().equals(friend.getId()));
-//        }
-//    }
-//
-//    public void removeInvites(UserEntity... invitations) {
-//        for (UserEntity invite : invitations) {
-//            getInvites().removeIf(i -> i.getUser().getId().equals(invite.getId()));
-//        }
-//    }
+
+    public void removeFriends(UserEntity... friends) {
+        List<UUID> idsToBeRemoved = Arrays.stream(friends).map(UserEntity::getId).toList();
+        for (Iterator<FriendsEntity> i = getFriends().iterator(); i.hasNext(); ) {
+            FriendsEntity friendsEntity = i.next();
+            if (idsToBeRemoved.contains(friendsEntity.getFriend().getId())) {
+                friendsEntity.setFriend(null);
+                i.remove();
+            }
+        }
+    }
+
+    public void removeInvites(UserEntity... invitations) {
+        List<UUID> idsToBeRemoved = Arrays.stream(invitations).map(UserEntity::getId).toList();
+        for (Iterator<FriendsEntity> i = getInvites().iterator(); i.hasNext(); ) {
+            FriendsEntity friendsEntity = i.next();
+            if (idsToBeRemoved.contains(friendsEntity.getUser().getId())) {
+                friendsEntity.setUser(null);
+                i.remove();
+            }
+        }
+    }
 
     @Override
     public final boolean equals(Object o) {

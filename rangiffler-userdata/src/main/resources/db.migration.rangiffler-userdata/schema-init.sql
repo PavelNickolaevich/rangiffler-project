@@ -9,6 +9,9 @@ create table if not exists country
     primary key (id)
 );
 
+insert into "country" (code, "name", "flag") values  ('33f3', '33b3', 'g3g3g3g');
+
+
 alter table "country"
     owner to postgres;
 
@@ -19,7 +22,7 @@ create table if not exists "user"
     firstname  varchar(255),
     lastName   varchar(255),
     avatar     bytea,
-    country_id UUID               not null,
+    country_id UUID                not null,
     primary key (id),
     constraint us_country_id foreign key (country_id) references country (id)
 );
